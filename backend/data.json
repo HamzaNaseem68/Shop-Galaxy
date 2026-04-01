@@ -1,0 +1,93 @@
+{
+  "users": [
+    {
+      "id": "44b0c812-51fd-4f45-9451-4b61bf8f2c22",
+      "name": "Hamza Naseem",
+      "email": "hamzanaseem6868@gmail.com",
+      "password": "hamza1234",
+      "createdAt": "2026-03-08T21:32:47.801Z"
+    }
+  ],
+  "orders": [
+    {
+      "id": "SG-MMIBNSWE",
+      "items": [
+        {
+          "id": "p5",
+          "qty": 1
+        }
+      ],
+      "subtotal": 3999,
+      "total": 3999,
+      "paymentMethod": "card",
+      "customer": {
+        "name": "ha",
+        "phone": "323233",
+        "address": "d",
+        "pincode": "32323"
+      },
+      "status": "Processing",
+      "createdAt": "2026-03-08T22:26:38.990Z",
+      "history": [
+        {
+          "label": "Order placed",
+          "at": "2026-03-08T22:26:38.990Z"
+        },
+        {
+          "label": "Processing",
+          "at": "2026-03-08T22:26:38.990Z"
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "id": "7ac5c42b-ff26-4299-b699-da2d30133879",
+      "name": "Classic White Sneakers",
+      "price": "?2,499",
+      "badge": "New",
+      "image": "/images/p1.png",
+      "createdAt": "2026-03-11T14:57:31.315Z",
+      "metaTitle": "Classic White Sneakers - Buy Online",
+      "metaDescription": "Get the best Classic White Sneakers.",
+      "keywords": "",
+      "slug": "classic-white-sneakers"
+    },
+    {
+      "id": "d7e86d00-5e78-4eb9-b6c0-2b29ec32f85c",
+      "name": "Minimalist Wrist Watch",
+      "price": "?3,299",
+      "badge": "Best Seller",
+      "image": "/images/p2.png",
+      "createdAt": "2026-03-11T15:00:00.239Z",
+      "metaTitle": "Minimalist Wrist Watch - ShopGalaxy",
+      "metaDescription": "Buy the best Minimalist Wrist Watch this season.",
+      "keywords": "",
+      "slug": "minimalist-wrist-watch"
+    },
+    {
+      "id": "77c70196-1681-4784-92a7-50f88dd686cb",
+      "name": "Leather Backpack",
+      "price": "?1,899",
+      "badge": "Limited",
+      "image": "/images/p3.png",
+      "createdAt": "2026-03-11T15:00:18.301Z",
+      "metaTitle": "Premium Leather Backpack - ShopGalaxy",
+      "metaDescription": "Get this limited time offer on our Premium Leather Backpack.",
+      "keywords": "",
+      "slug": "leather-backpack"
+    },
+    {
+      "id": "2c0233eb-5442-46bf-bee8-efcf281541e4",
+      "name": "Wireless Headphones",
+      "price": "?4,799",
+      "badge": "Trending",
+      "image": "/images/p4.png",
+      "createdAt": "2026-03-11T15:00:34.797Z",
+      "metaTitle": "Wireless Headphones with Active Noise Cancellation",
+      "metaDescription": "Get the best audio experience. Buy now at ShopGalaxy.",
+      "keywords": "",
+      "slug": "wireless-headphones"
+    }
+  ]
+}
