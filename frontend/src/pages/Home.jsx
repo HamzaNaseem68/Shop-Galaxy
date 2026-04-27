@@ -25,6 +25,19 @@ const CATEGORIES = [
   { key: 'electronics', label: 'Electronics' },
 ];
 
+const CHATBOT_SUGGESTIONS = [
+  'Show items under 3000',
+  'Add Leather Backpack to cart',
+  'Show me latest accessories',
+  'How do I track my order?',
+];
+
+const COUPONS = {
+  SAVE10: { label: '10% off', type: 'percent', value: 10 },
+  SAVE200: { label: 'Rs 200 off', type: 'flat', value: 200 },
+  NEWUSER: { label: '15% off', type: 'percent', value: 15 },
+};
+
 function parsePrice(priceStr) {
   if (typeof priceStr === 'number') return priceStr;
   return parseInt(String(priceStr).replace(/[^0-9]/g, ''), 10) || 0;
@@ -32,6 +45,181 @@ function parsePrice(priceStr) {
 
 function formatPrice(amount) {
   return 'Rs ' + amount.toLocaleString('en-PK');
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPriceLimit(message) {
+  const parseBudget = (value) => {
+    const cleaned = String(value || '').replace(/,/g, '').trim();
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const match = message.match(/(?:under|below|less than|max(?:imum)?|upto|up to|cheaper than|within|at most|no more than|andar|kam|niche|neeche|tak)\s*(?:rs\.?\s*)?([\d,]{1,9})/i);
+  if (match) return parseBudget(match[1]);
+
+  const compactMatch = message.match(/(?:under|below|less than|within|at most|no more than|andar|tak)\s*([\d,]{1,9})/i);
+  if (compactMatch) return parseBudget(compactMatch[1]);
+
+  const afterNumberMatch = message.match(/([\d,]{1,9})\s*(?:ke\s*)?(?:under|andar|tak|se\s*kam|se\s*niche|se\s*neeche|below|less)/i);
+  if (afterNumberMatch) return parseBudget(afterNumberMatch[1]);
+
+  const anyNumberMatch = message.match(/\b([\d,]{1,9})\b/);
+  const hasPriceIntent = /show|filter|items?|products?|cheeze|cheez|dikha|dikh|under|below|less|kam|andar|tak|budget|price/i.test(message);
+  if (anyNumberMatch && hasPriceIntent) return parseBudget(anyNumberMatch[1]);
+
+  return null;
+}
+
+function extractCouponCode(message) {
+  const normalized = normalizeText(message).replace(/\s+/g, ' ').trim();
+  const knownCodes = Object.keys(COUPONS);
+  const foundKnownCode = knownCodes.find(code => normalized.includes(code.toLowerCase()));
+  if (foundKnownCode) return foundKnownCode;
+
+  const codeMatch = normalized.match(/\b([a-z]{4,12}\d{0,4})\b/i);
+  if (codeMatch) {
+    const upper = codeMatch[1].toUpperCase();
+    if (COUPONS[upper]) return upper;
+  }
+
+  return null;
+}
+
+function findCategoryFromMessage(message) {
+  const normalized = normalizeText(message);
+  const matches = CATEGORIES.filter(category => category.key !== 'all' && normalized.includes(category.key.replace('-', ' ')));
+
+  if (matches.length > 0) return matches[0].key;
+
+  if (normalized.includes('shoe') || normalized.includes('sneaker')) return 'shoes';
+  if (normalized.includes('hoodie') || normalized.includes('shirt') || normalized.includes('clothing')) return 'clothing';
+  if (normalized.includes('perfume') || normalized.includes('fragrance')) return 'perfumes';
+  if (normalized.includes('accessor')) return 'accessories';
+  if (normalized.includes('bag')) return 'bags';
+  if (normalized.includes('cover')) return 'phone-covers';
+  if (normalized.includes('electronic') || normalized.includes('gadget') || normalized.includes('tech')) return 'electronics';
+
+  return null;
+}
+
+function splitCartKeywords(message) {
+  const normalized = normalizeText(message);
+  return normalized
+    .replace(/\b(add|put|place|buy|remove|delete|clear|from|to|cart|basket|wishlist|show|filter|under|below|less|than|max|maximum|upto|up|items?|thing|things|the|my)\b/g, ' ')
+    .split(' ')
+    .map(token => token.trim())
+    .filter(Boolean);
+}
+
+function getProductMatchCandidates(products, message) {
+  const normalized = normalizeText(message);
+  const keywords = splitCartKeywords(message);
+
+  const scored = products
+    .map(product => {
+      const productName = normalizeText(product.name);
+      let score = 0;
+
+      if (normalized.includes(productName)) score += 100;
+
+      keywords.forEach(keyword => {
+        if (keyword.length < 3) return;
+        if (productName.includes(keyword)) score += keyword.length;
+        if (normalized.includes(keyword) && productName.includes(keyword)) score += keyword.length * 2;
+      });
+
+      if (normalized.includes('sneaker') && productName.includes('sneaker')) score += 20;
+      if (normalized.includes('shoe') && productName.includes('shoe')) score += 20;
+      if (normalized.includes('watch') && productName.includes('watch')) score += 20;
+      if (normalized.includes('bag') && productName.includes('bag')) score += 20;
+      if (normalized.includes('headphone') && productName.includes('headphone')) score += 20;
+      if (normalized.includes('hoodie') && productName.includes('hoodie')) score += 20;
+      if (normalized.includes('sunglass') && productName.includes('sunglass')) score += 20;
+
+      return { product, score };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored;
+}
+
+function getChatbotReply(message) {
+  const text = normalizeText(message);
+
+  if (text.includes('track') || text.includes('order')) {
+    return 'Open the Track Order section below and enter your order ID. If you already placed an order on this device, I can use the saved order ID too.';
+  }
+
+  if (text.includes('checkout') || text.includes('payment') || text.includes('pay')) {
+    return 'Add items to cart, open the cart button, then proceed to checkout. You can pay by card, COD, or UPI from the checkout form.';
+  }
+
+  if (text.includes('login') || text.includes('signup') || text.includes('account')) {
+    return 'Use the Login or Sign Up buttons in the top bar. After signing in, you can view orders and wishlist items from the header.';
+  }
+
+  if (text.includes('discount') || text.includes('offer') || text.includes('sale')) {
+    return 'There is no coupon system wired in right now, but the store is ready for it. I can still help you find the best product category.';
+  }
+
+  if (text.includes('wishlist') || text.includes('favorite')) {
+    return 'Tap the heart button on any product card to save it. Your wishlist opens from the heart icon in the header.';
+  }
+
+  if (text.includes('cart')) {
+    return 'Use the Add to Cart button on any product card. Then open the cart icon in the header to review items and checkout.';
+  }
+
+  return 'I can help with orders, coupons, cart, and product filters. You can type any budget like "show items under 4500" or "3000 ke andar products".';
+}
+
+function getChatbotActionSummary(action) {
+  if (!action) return null;
+
+  if (action.type === 'add') {
+    return `Added ${action.product.name} to your cart.`;
+  }
+
+  if (action.type === 'remove') {
+    return action.removedAll
+      ? `Removed ${action.product.name} from your cart.`
+      : `Reduced ${action.product.name} quantity in your cart.`;
+  }
+
+  if (action.type === 'filter-price') {
+    return `Showing products under Rs ${action.limit.toLocaleString('en-PK')}.`;
+  }
+
+  if (action.type === 'filter-category') {
+    return `Showing ${action.label} products.`;
+  }
+
+  if (action.type === 'clear-filters') {
+    return 'Cleared all product filters.';
+  }
+
+  if (action.type === 'coupon-applied') {
+    return `${action.code} applied. You saved ${formatPrice(action.discount)}.`;
+  }
+
+  if (action.type === 'coupon-cleared') {
+    return 'Coupon removed from the cart.';
+  }
+
+  if (action.type === 'coupon-help') {
+    return `Available coupons: ${Object.keys(COUPONS).join(', ')}.`;
+  }
+
+  return null;
 }
 
 function Home() {
@@ -61,8 +249,20 @@ function Home() {
   const [myOrdersOpen, setMyOrdersOpen] = useState(false);
   const [myOrders, setMyOrders] = useState([]);
   const [wishlistOpen, setWishlistOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { id: 1, sender: 'bot', text: 'Hi, I am your ShopGalaxy AI assistant! You can click on the FAQs below or try typing something like "Add classic sneakers to cart", or "Show products under 2000".' },
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [priceLimit, setPriceLimit] = useState(null);
+  const [filterMessage, setFilterMessage] = useState('');
+  const [lastChatProductId, setLastChatProductId] = useState(null);
+  const [lastSuggestedProductIds, setLastSuggestedProductIds] = useState([]);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponInput, setCouponInput] = useState('');
 
   const productGridRef = useRef(null);
+  const chatScrollRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('shopGalaxy_cart_v1', JSON.stringify(cart));
@@ -77,6 +277,12 @@ function Home() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, chatOpen]);
 
   const fetchProducts = () => {
     fetch(`${API}/api/products`)
@@ -114,6 +320,53 @@ function Home() {
     setCartOpen(true);
   };
 
+  const removeOneFromCart = (productId) => {
+    let removedAll = false;
+
+    setCart(prev => {
+      const existing = prev.find(item => item.id === productId);
+      if (!existing) return prev;
+
+      if (existing.qty <= 1) {
+        removedAll = true;
+        return prev.filter(item => item.id !== productId);
+      }
+
+      return prev.map(item => item.id === productId ? { ...item, qty: item.qty - 1 } : item);
+    });
+
+    return removedAll;
+  };
+
+  const clearFilters = () => {
+    setActiveCategory('all');
+    setSearchQuery('');
+    setPriceLimit(null);
+    setFilterMessage('');
+  };
+
+  const applyCoupon = (rawCode) => {
+    const code = String(rawCode || '').trim().toUpperCase();
+    const coupon = COUPONS[code];
+
+    if (!code) {
+      setAppliedCoupon(null);
+      return { ok: false, message: 'Enter a coupon code first.' };
+    }
+
+    if (!coupon) {
+      return { ok: false, message: 'Coupon code not recognized. Try SAVE10, SAVE200, or NEWUSER.' };
+    }
+
+    setAppliedCoupon({ code, ...coupon });
+    return { ok: true, code, discount: coupon.type === 'percent' ? Math.round(cartSubtotal * (coupon.value / 100)) : coupon.value };
+  };
+
+  const clearCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+  };
+
   const toggleWishlist = async (productId) => {
     // Local update first for snappy UI
     const isPresent = wishlist.includes(productId);
@@ -146,6 +399,14 @@ function Home() {
     return sum + (p ? p.numericPrice : 0) * item.qty;
   }, 0);
 
+  const couponDiscount = appliedCoupon
+    ? (appliedCoupon.type === 'percent'
+      ? Math.round(cartSubtotal * (appliedCoupon.value / 100))
+      : appliedCoupon.value)
+    : 0;
+
+  const cartTotal = Math.max(cartSubtotal - couponDiscount, 0);
+
   const handleCheckout = async (e) => {
     e.preventDefault();
     if (!cart.length) return;
@@ -161,7 +422,9 @@ function Home() {
         };
       }),
       subtotal: cartSubtotal,
-      total: cartSubtotal, // Logic for shipping/tax can be added here
+      discount: couponDiscount,
+      couponCode: appliedCoupon?.code || '',
+      total: cartTotal, // Logic for shipping/tax can be added here
       paymentMethod: checkoutForm.paymentMethod,
       customer: {
         id: currentUser?._id || currentUser?.id,
@@ -260,10 +523,161 @@ function Home() {
     }
   };
 
+  const sendChatMessage = (text) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const userMessage = { id: Date.now(), sender: 'user', text: trimmed };
+    const botMessage = { id: Date.now() + 1, sender: 'bot', text: getChatbotReply(trimmed) };
+
+    setChatMessages(prev => [...prev, userMessage, botMessage]);
+    setChatInput('');
+  };
+
+  const appendChatAction = (userText, botText, items = []) => {
+    setChatMessages(prev => [
+      ...prev,
+      { id: Date.now(), sender: 'user', text: userText },
+      { id: Date.now() + 1, sender: 'bot', text: botText, attachedProducts: items.slice(0, 4) },
+    ]);
+    setChatInput('');
+  };
+
+  const resolveChatProduct = (catalogProducts, rawMessage, isRemoveCommand) => {
+    const productMatches = getProductMatchCandidates(catalogProducts, rawMessage);
+    if (productMatches[0]?.product) return productMatches[0].product;
+
+    const refersCurrentItem = /(this item|yeh item|ye item|is item|current item)/i.test(rawMessage);
+    const secondItemRef = /(second item|2nd item|dusra item|doosra item)/i.test(rawMessage);
+    const firstItemRef = /(first item|1st item|pehla item|pahla item)/i.test(rawMessage) || refersCurrentItem;
+
+    if (lastSuggestedProductIds.length > 0 && (firstItemRef || secondItemRef)) {
+      const index = secondItemRef ? 1 : 0;
+      const targetId = lastSuggestedProductIds[index] || lastSuggestedProductIds[0];
+      const suggested = catalogProducts.find(p => p.id === targetId);
+      if (suggested) return suggested;
+    }
+
+    if (refersCurrentItem && lastChatProductId) {
+      const fromLast = catalogProducts.find(p => p.id === lastChatProductId);
+      if (fromLast) return fromLast;
+    }
+
+    if (refersCurrentItem && cart.length === 1) {
+      const singleCartProduct = catalogProducts.find(p => p.id === cart[0].id);
+      if (singleCartProduct) return singleCartProduct;
+    }
+
+    if (isRemoveCommand && cart.length === 1) {
+      const onlyCartProduct = catalogProducts.find(p => p.id === cart[0].id);
+      if (onlyCartProduct) return onlyCartProduct;
+    }
+
+    return null;
+  };
+
+  const buildProductPreviewText = (items, limitText) => {
+    if (!Array.isArray(items) || items.length === 0) {
+      return `No products found ${limitText}. Try a higher budget or clear filters.`;
+    }
+
+    const names = items.slice(0, 4).map(item => item.name).join(', ');
+    const moreCount = items.length - Math.min(items.length, 4);
+    const moreText = moreCount > 0 ? ` and ${moreCount} more.` : '.';
+    return `Showing ${items.length} products ${limitText}: ${names}${moreText}`;
+  };
+
+  const processChatInput = (rawInput) => {
+    const rawMessage = String(rawInput || '').trim();
+    if (!rawMessage) return;
+
+    const catalogProducts = products;
+
+    const normalized = normalizeText(rawMessage);
+    const category = findCategoryFromMessage(rawMessage);
+    const limit = extractPriceLimit(rawMessage);
+    const couponCode = extractCouponCode(rawMessage);
+    const isClearCommand = normalized.includes('clear filter') || normalized.includes('reset filter') || normalized.includes('show all') || normalized.includes('remove filters');
+    const isAddCommand = normalized.includes('add ') || normalized.startsWith('add') || normalized.includes('put ') || normalized.includes('cart me') || normalized.includes('cart mein');
+    const isRemoveCommand = normalized.includes('remove ') || normalized.startsWith('remove') || normalized.includes('delete ') || normalized.includes('hata') || normalized.includes('nikal');
+    const isCouponCommand = normalized.includes('coupon') || normalized.includes('promo') || normalized.includes('discount') || normalized.includes('code');
+    const isCouponClearCommand = normalized.includes('remove coupon') || normalized.includes('clear coupon') || normalized.includes('coupon hata') || normalized.includes('coupon clear');
+
+    const matchedProduct = resolveChatProduct(catalogProducts, rawMessage, isRemoveCommand);
+    let actionSummary = null;
+
+    if ((isAddCommand || isRemoveCommand || limit || category) && catalogProducts.length === 0) {
+      appendChatAction(rawMessage, 'Products are still loading. Please try again in a moment.');
+      return;
+    }
+
+    if (isClearCommand) {
+      clearFilters();
+      actionSummary = getChatbotActionSummary({ type: 'clear-filters' });
+    } else if (isAddCommand && matchedProduct) {
+      addToCart(matchedProduct.id);
+      setLastChatProductId(matchedProduct.id);
+      setLastSuggestedProductIds([matchedProduct.id]);
+      actionSummary = getChatbotActionSummary({ type: 'add', product: matchedProduct });
+    } else if (isRemoveCommand && matchedProduct) {
+      const removedAll = removeOneFromCart(matchedProduct.id);
+      setLastChatProductId(matchedProduct.id);
+      setLastSuggestedProductIds([matchedProduct.id]);
+      actionSummary = getChatbotActionSummary({ type: 'remove', product: matchedProduct, removedAll });
+    } else if (isAddCommand && !matchedProduct) {
+      actionSummary = 'Can you specify the product name? For example: "Add classic white sneakers to cart".';
+    } else if (isRemoveCommand && !matchedProduct) {
+      actionSummary = 'Which item do you want to remove? Please write the product name, for example: "Remove hoodie from cart".';
+    } else if (isCouponClearCommand) {
+      clearCoupon();
+      actionSummary = getChatbotActionSummary({ type: 'coupon-cleared' });
+    } else if (isCouponCommand && couponCode) {
+      const result = applyCoupon(couponCode);
+      actionSummary = result.ok
+        ? getChatbotActionSummary({ type: 'coupon-applied', code: result.code, discount: result.discount })
+        : result.message;
+    } else if (isCouponCommand && !couponCode) {
+      actionSummary = getChatbotActionSummary({ type: 'coupon-help' });
+    } else if (limit) {
+      const matchedByPrice = catalogProducts.filter(product => product.numericPrice <= limit);
+      setPriceLimit(limit);
+      setActiveCategory('all');
+      setSearchQuery('');
+      setFilterMessage(`Showing products under Rs ${limit.toLocaleString('en-PK')}.`);
+      setLastSuggestedProductIds(matchedByPrice.slice(0, 5).map(item => item.id));
+      if (matchedByPrice[0]) setLastChatProductId(matchedByPrice[0].id);
+      appendChatAction(rawMessage, `Here are some products under Rs ${limit.toLocaleString('en-PK')}:`, matchedByPrice);
+      return;
+    } else if (category) {
+      const matchedByCategory = catalogProducts.filter(product => product.category === category);
+      const categoryLabel = CATEGORIES.find(item => item.key === category)?.label || category;
+      setActiveCategory(category);
+      setPriceLimit(null);
+      setFilterMessage(`Showing ${categoryLabel} products.`);
+      setLastSuggestedProductIds(matchedByCategory.slice(0, 5).map(item => item.id));
+      if (matchedByCategory[0]) setLastChatProductId(matchedByCategory[0].id);
+      appendChatAction(rawMessage, `Check out our popular ${categoryLabel}:`, matchedByCategory);
+      return;
+    }
+
+    if (actionSummary) {
+      appendChatAction(rawMessage, actionSummary);
+      return;
+    }
+
+    sendChatMessage(rawMessage);
+  };
+
+  const handleChatSubmit = (e) => {
+    e.preventDefault();
+    processChatInput(chatInput);
+  };
+
   const filteredProducts = products.filter(p => {
     const matchesCat = activeCategory === 'all' || p.category === activeCategory;
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCat && matchesSearch;
+    const matchesPrice = priceLimit === null || p.numericPrice <= priceLimit;
+    return matchesCat && matchesSearch && matchesPrice;
   });
 
   const renderProduct = (p) => (
@@ -398,6 +812,35 @@ function Home() {
             </button>
           ))}
         </div>
+        {(activeCategory !== 'all' || priceLimit !== null || searchQuery) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Active filters:</span>
+            {activeCategory !== 'all' && (
+              <button className="category-pill active" type="button" onClick={() => setActiveCategory('all')}>
+                {CATEGORIES.find(cat => cat.key === activeCategory)?.label || activeCategory}
+              </button>
+            )}
+            {priceLimit !== null && (
+              <button className="category-pill active" type="button" onClick={() => setPriceLimit(null)}>
+                Under Rs {priceLimit.toLocaleString('en-PK')}
+              </button>
+            )}
+            {searchQuery && (
+              <button className="category-pill active" type="button" onClick={() => setSearchQuery('')}>
+                Search: {searchQuery}
+              </button>
+            )}
+            <button className="category-pill" type="button" onClick={clearFilters}>
+              Clear all
+            </button>
+          </div>
+        )}
+
+        {filterMessage && (
+          <p style={{ marginTop: '1rem', marginBottom: 0, color: 'var(--primary-dark)', fontWeight: 600 }}>
+            {filterMessage}
+          </p>
+        )}
 
         {loading ? <p style={{textAlign: 'center', padding: '4rem 0'}}>Loading latest trends...</p> : (
           <div className="product-grid" style={{ paddingBottom: '4rem' }}>
@@ -479,6 +922,45 @@ function Home() {
                 </div>
                 <div style={{marginTop: '2rem', borderTop: '2px solid #eee', paddingTop: '1rem'}}>
                   <div style={{display: 'flex', justifyContent: 'space-between'}}><h3>Subtotal</h3><h3>{formatPrice(cartSubtotal)}</h3></div>
+                  <div style={{display: 'flex', gap: '0.75rem', marginTop: '0.75rem'}}>
+                    <input
+                      className="track-input"
+                      placeholder="Coupon code e.g. SAVE10"
+                      value={couponInput}
+                      onChange={e => setCouponInput(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="hero-btn ghost"
+                      style={{padding: '0.75rem 1rem', whiteSpace: 'nowrap'}}
+                      onClick={() => {
+                        const result = applyCoupon(couponInput);
+                        if (!result.ok) alert(result.message);
+                      }}
+                    >
+                      Apply
+                    </button>
+                    {appliedCoupon && (
+                      <button
+                        type="button"
+                        className="hero-btn ghost"
+                        style={{padding: '0.75rem 1rem', whiteSpace: 'nowrap'}}
+                        onClick={clearCoupon}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  {appliedCoupon && (
+                    <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', color: 'var(--primary-dark)'}}>
+                      <span>Coupon {appliedCoupon.code}</span>
+                      <span>- {formatPrice(couponDiscount)}</span>
+                    </div>
+                  )}
+                  <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem'}}>
+                    <strong>Total</strong>
+                    <strong>{formatPrice(cartTotal)}</strong>
+                  </div>
                   <button 
                     className="add-to-cart-btn" 
                     style={{marginTop: '1rem'}} 
@@ -539,7 +1021,7 @@ function Home() {
                 <div style={{borderTop: '2px solid #eee', paddingTop: '1rem', background: '#fff'}}>
                   <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '1rem'}}>
                     <strong>Total Amount</strong>
-                    <strong>{formatPrice(cartSubtotal)}</strong>
+                    <strong>{formatPrice(cartTotal)}</strong>
                   </div>
                   <div style={{display: 'flex', gap: '1rem'}}>
                     <button 
@@ -658,6 +1140,81 @@ function Home() {
           </div>
         </div>
       )}
+
+      {chatOpen && (
+        <div className="new-chatbot-ui" role="dialog" aria-label="ShopGalaxy chatbot">
+          <div className="nx-chat-header">
+            <div className="nx-chat-title">
+              <span className="nx-bot-avatar">🤖</span>
+              <div>
+                <h4>ShopGalaxy Assistant</h4>
+                <p>Online & Ready to Help</p>
+              </div>
+            </div>
+            <button className="nx-chat-close" onClick={() => setChatOpen(false)}>×</button>
+          </div>
+
+          <div className="nx-chat-messages" ref={chatScrollRef}>
+             {filterMessage && (
+               <div style={{ alignSelf: 'center', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-dark)', padding: '0.4rem 0.8rem', borderRadius: '1rem', fontSize: '0.75rem', marginBottom: '0.5rem', fontWeight: 600 }}>
+                 {filterMessage}
+               </div>
+             )}
+            {chatMessages.map(message => (
+              <div key={message.id} className={`nx-msg-wrapper ${message.sender}`}>
+                <div className="nx-msg-bubble">
+                  {message.text}
+                </div>
+                {message.attachedProducts && message.attachedProducts.length > 0 && (
+                  <div className="nx-msg-products hide-scroll">
+                    {message.attachedProducts.map(p => (
+                      <div key={p.id} className="nx-product-card" onClick={() => addToCart(p.id)}>
+                        <img src={p.image} alt={p.name} />
+                        <div className="nx-product-info">
+                          <p className="nx-name">{p.name}</p>
+                          <p className="nx-price">{formatPrice(p.numericPrice)}</p>
+                          <button className="nx-add-btn">+ Add</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <style dangerouslySetInnerHTML={{__html: `
+            .hide-scroll::-webkit-scrollbar { height: 0px; width: 0px; display: none; }
+            .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+          `}} />
+
+          <div className="nx-chat-suggestions hide-scroll">
+            {CHATBOT_SUGGESTIONS.map(suggestion => (
+              <button key={suggestion} type="button" onClick={() => processChatInput(suggestion)}>
+                {suggestion}
+              </button>
+            ))}
+          </div>
+
+          <form className="nx-chat-form" onSubmit={handleChatSubmit}>
+            <input
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              placeholder="Ask anything..."
+            />
+            <button type="submit">
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+            </button>
+          </form>
+        </div>
+      )}
+
+      <button
+        className="nx-chatbot-launcher"
+        onClick={() => setChatOpen(prev => !prev)}
+      >
+        {chatOpen ? '✕' : '💬'}
+      </button>
 
       {showScrollTop && <button className="scroll-top-btn" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>↑</button>}
 
