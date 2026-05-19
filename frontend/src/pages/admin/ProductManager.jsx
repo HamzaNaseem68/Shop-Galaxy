@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet-async';
 
 function ProductManager() {
     const [products, setProducts] = useState([]);
+    const [isGeneratingSEO, setIsGeneratingSEO] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         price: '',
@@ -10,15 +11,18 @@ function ProductManager() {
         image: '',
         category: 'all',
         description: '',
-        metaTitle: '',
-        metaDescription: '',
+        seo_title: '',
+        seo_description: '',
         keywords: '',
+        alt_text: '',
         slug: ''
     });
     const [editingId, setEditingId] = useState(null);
 
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
     const fetchProducts = () => {
-        fetch('http://localhost:5000/api/products')
+        fetch(`${API_BASE}/api/products`)
             .then(res => res.json())
             .then(data => setProducts(data))
             .catch(err => console.error(err));
@@ -35,7 +39,7 @@ function ProductManager() {
     const handleSubmit = (e) => {
         e.preventDefault();
         const isEdit = !!editingId;
-        const url = isEdit ? `http://localhost:5000/api/products/${editingId}` : 'http://localhost:5000/api/products';
+        const url = isEdit ? `${API_BASE}/api/products/${editingId}` : `${API_BASE}/api/products`;
         const method = isEdit ? 'PUT' : 'POST';
 
         fetch(url, {
@@ -45,7 +49,7 @@ function ProductManager() {
         })
             .then(res => res.json())
             .then(() => {
-                setFormData({ name: '', price: '', badge: '', image: '', category: 'all', description: '', metaTitle: '', metaDescription: '', keywords: '', slug: '' });
+                setFormData({ name: '', price: '', badge: '', image: '', category: 'all', description: '', seo_title: '', seo_description: '', keywords: '', alt_text: '', slug: '' });
                 setEditingId(null);
                 fetchProducts();
             })
@@ -61,18 +65,58 @@ function ProductManager() {
             image: p.image || '',
             category: p.category || 'all',
             description: p.description || '',
-            metaTitle: p.metaTitle || '',
-            metaDescription: p.metaDescription || '',
+            seo_title: p.seo_title || '',
+            seo_description: p.seo_description || '',
             keywords: p.keywords || '',
+            alt_text: p.alt_text || '',
             slug: p.slug || ''
         });
     };
 
     const handleDelete = (id) => {
         if (!confirm('Are you sure you want to delete this product?')) return;
-        fetch(`http://localhost:5000/api/products/${id}`, { method: 'DELETE' })
+        fetch(`${API_BASE}/api/products/${id}`, { method: 'DELETE' })
             .then(() => fetchProducts())
             .catch(err => console.error(err));
+    };
+
+    const handleGenerateSEO = async () => {
+        if (!formData.name || !formData.description) {
+            alert('Please enter a product name and description first.');
+            return;
+        }
+        
+        setIsGeneratingSEO(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/seo/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    productName: formData.name,
+                    category: formData.category,
+                    description: formData.description
+                })
+            });
+            
+            const data = await res.json();
+            if (res.ok) {
+                setFormData(prev => ({
+                    ...prev,
+                    seo_title: data.seoTitle || prev.seo_title,
+                    seo_description: data.metaDescription || prev.seo_description,
+                    keywords: data.keywords || prev.keywords,
+                    alt_text: data.altText || prev.alt_text
+                }));
+                alert('SEO generated successfully!');
+            } else {
+                alert('Error generating SEO: ' + (data.error || 'Unknown error'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Failed to connect to SEO service.');
+        } finally {
+            setIsGeneratingSEO(false);
+        }
     };
 
     return (
@@ -129,7 +173,18 @@ function ProductManager() {
                             </div>
                         </div>
 
-                        <h4>SEO Settings (On-Page)</h4>
+                        <div className="form-group row" style={{ alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                            <h4 style={{ margin: 0 }}>SEO Settings (On-Page)</h4>
+                            <button 
+                                type="button" 
+                                className="admin-btn secondary" 
+                                onClick={handleGenerateSEO} 
+                                disabled={isGeneratingSEO}
+                                style={{ background: '#3b82f6', color: 'white', padding: '0.5rem 1rem', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
+                            >
+                                {isGeneratingSEO ? 'Generating...' : '✨ Auto Generate SEO'}
+                            </button>
+                        </div>
                         <div className="form-group row">
                             <div className="col">
                                 <label>Slug</label>
@@ -140,13 +195,19 @@ function ProductManager() {
                                 <input type="text" name="keywords" value={formData.keywords} onChange={handleChange} placeholder="shoes, red, stylish" />
                             </div>
                         </div>
-                        <div className="form-group">
-                            <label>Meta Title</label>
-                            <input type="text" name="metaTitle" value={formData.metaTitle} onChange={handleChange} />
+                        <div className="form-group row">
+                            <div className="col">
+                                <label>SEO Title</label>
+                                <input type="text" name="seo_title" value={formData.seo_title} onChange={handleChange} maxLength="60" />
+                            </div>
+                            <div className="col">
+                                <label>Image Alt Text</label>
+                                <input type="text" name="alt_text" value={formData.alt_text} onChange={handleChange} />
+                            </div>
                         </div>
                         <div className="form-group">
                             <label>Meta Description</label>
-                            <textarea name="metaDescription" value={formData.metaDescription} onChange={handleChange} rows="3" />
+                            <textarea name="seo_description" value={formData.seo_description} onChange={handleChange} rows="3" maxLength="160" />
                         </div>
 
                         <button type="submit" className="admin-btn primary">
@@ -155,7 +216,7 @@ function ProductManager() {
                         {editingId && (
                             <button type="button" className="admin-btn ghost" onClick={() => {
                                 setEditingId(null);
-                                setFormData({ name: '', price: '', badge: '', image: '', category: 'all', description: '', metaTitle: '', metaDescription: '', keywords: '', slug: '' });
+                                setFormData({ name: '', price: '', badge: '', image: '', category: 'all', description: '', seo_title: '', seo_description: '', keywords: '', alt_text: '', slug: '' });
                             }}>Cancel</button>
                         )}
                     </form>
@@ -184,8 +245,8 @@ function ProductManager() {
                                         <small>{p.price}</small>
                                     </td>
                                     <td>
-                                        <span className="badge-seo">{p.metaTitle ? '✅ Title' : '❌ Title'}</span>
-                                        <span className="badge-seo">{p.metaDescription ? '✅ Desc' : '❌ Desc'}</span>
+                                        <span className="badge-seo">{p.seo_title ? '✅ Title' : '❌ Title'}</span>
+                                        <span className="badge-seo">{p.seo_description ? '✅ Desc' : '❌ Desc'}</span>
                                     </td>
                                     <td>
                                         <button className="icon-btn edit" onClick={() => handleEdit(p)}>✏️</button>

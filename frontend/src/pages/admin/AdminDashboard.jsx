@@ -12,11 +12,12 @@ function DashboardOverview() {
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
-                const ordersRes = await fetch('http://localhost:5000/api/admin/orders');
+                const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+                const ordersRes = await fetch(`${API_BASE}/api/admin/orders`);
                 const ordersData = await ordersRes.json();
                 setOrders(ordersData);
 
-                const productsRes = await fetch('http://localhost:5000/api/products');
+                const productsRes = await fetch(`${API_BASE}/api/products`);
                 const productsData = await productsRes.json();
                 setProductsCount(productsData.length);
             } catch (err) {
@@ -30,7 +31,8 @@ function DashboardOverview() {
 
     const updateOrderStatus = async (orderId, newStatus) => {
         try {
-            const res = await fetch(`http://localhost:5000/api/admin/orders/${orderId}/status`, {
+            const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+            const res = await fetch(`${API_BASE}/api/admin/orders/${orderId}/status`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus })
@@ -199,7 +201,8 @@ function RevenueView() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:5000/api/admin/orders')
+        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        fetch(`${API_BASE}/api/admin/orders`)
             .then(res => res.json())
             .then(data => {
                 setOrders(data);
@@ -278,7 +281,8 @@ function UserManagementView() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:5000/api/admin/users')
+        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+        fetch(`${API_BASE}/api/admin/users`)
             .then(res => res.json())
             .then(data => {
                 setUsers(data);

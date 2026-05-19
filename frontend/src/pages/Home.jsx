@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import { Link } from 'react-router-dom';
 import '../index.css';
 
-const API = 'http://localhost:5000';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const FALLBACK_PRODUCTS = [
   { id: 'p1', name: 'Classic White Sneakers', price: 'Rs 2,499', numericPrice: 2499, badge: 'New', image: 'https://images.pexels.com/photos/1456706/pexels-photo-1456706.jpeg?auto=compress&cs=tinysrgb&w=800', category: 'shoes' },
@@ -121,35 +121,15 @@ function splitCartKeywords(message) {
 
 function getProductMatchCandidates(products, message) {
   const normalized = normalizeText(message);
-  const keywords = splitCartKeywords(message);
-
-  const scored = products
-    .map(product => {
-      const productName = normalizeText(product.name);
-      let score = 0;
-
-      if (normalized.includes(productName)) score += 100;
-
-      keywords.forEach(keyword => {
-        if (keyword.length < 3) return;
-        if (productName.includes(keyword)) score += keyword.length;
-        if (normalized.includes(keyword) && productName.includes(keyword)) score += keyword.length * 2;
-      });
-
-      if (normalized.includes('sneaker') && productName.includes('sneaker')) score += 20;
-      if (normalized.includes('shoe') && productName.includes('shoe')) score += 20;
-      if (normalized.includes('watch') && productName.includes('watch')) score += 20;
-      if (normalized.includes('bag') && productName.includes('bag')) score += 20;
-      if (normalized.includes('headphone') && productName.includes('headphone')) score += 20;
-      if (normalized.includes('hoodie') && productName.includes('hoodie')) score += 20;
-      if (normalized.includes('sunglass') && productName.includes('sunglass')) score += 20;
-
-      return { product, score };
-    })
-    .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  return scored;
+  
+  const matchedProducts = products.filter(product => {
+    const productName = normalizeText(product.name);
+    return normalized.includes(productName);
+  });
+  
+  return matchedProducts
+    .map(product => ({ product, score: 100 }))
+    .sort((a, b) => b.product.name.length - a.product.name.length);
 }
 
 function getChatbotReply(message) {
@@ -260,6 +240,7 @@ function Home() {
   const [lastSuggestedProductIds, setLastSuggestedProductIds] = useState([]);
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponInput, setCouponInput] = useState('');
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   const productGridRef = useRef(null);
   const chatScrollRef = useRef(null);
@@ -393,7 +374,7 @@ function Home() {
   const removeFromCart = (id) => setCart(prev => prev.filter(i => i.id !== id));
   const updateQty = (id, delta) => setCart(prev => prev.map(i => i.id === id ? { ...i, qty: Math.max(1, i.qty + delta) } : i));
 
-  const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
+  const cartCount = cart.length;
   const cartSubtotal = cart.reduce((sum, item) => {
     const p = products.find(prod => prod.id === item.id);
     return sum + (p ? p.numericPrice : 0) * item.qty;
@@ -409,8 +390,13 @@ function Home() {
 
   const handleCheckout = async (e) => {
     e.preventDefault();
-    if (!cart.length) return;
-    
+    if (!cart.length) {
+      alert('Your cart is empty.');
+      return;
+    }
+
+    setIsPlacingOrder(true);
+
     const orderData = {
       items: cart.map(item => {
         const p = products.find(prod => prod.id === item.id);
@@ -438,19 +424,30 @@ function Home() {
       const res = await fetch(`${API}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderData)
+        body: JSON.stringify(orderData),
       });
-      
-      if (!res.ok) throw new Error('Failed to place order.');
-      
-      const data = await res.json();
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to place order.');
+      }
+
       localStorage.setItem('shopGalaxy_lastOrderId', data.orderId);
       setCart([]);
+      clearCoupon();
       setShowCheckout(false);
       setCartOpen(false);
-      alert(`Order Placed! ID: ${data.orderId}`);
+      setOrderMsg(`Order placed! ID: ${data.orderId}`);
+      alert(`Order placed successfully!\n\nOrder ID: ${data.orderId}\nTotal: ${formatPrice(cartTotal)}`);
     } catch (err) {
-      alert(err.message);
+      console.error(err);
+      alert(
+        err.message ||
+          `Could not place order. Start the backend:\n\ncd backend\nnpm start\n\nAPI: ${API}`,
+      );
+    } finally {
+      setIsPlacingOrder(false);
     }
   };
 
@@ -602,6 +599,7 @@ function Home() {
     const isRemoveCommand = normalized.includes('remove ') || normalized.startsWith('remove') || normalized.includes('delete ') || normalized.includes('hata') || normalized.includes('nikal');
     const isCouponCommand = normalized.includes('coupon') || normalized.includes('promo') || normalized.includes('discount') || normalized.includes('code');
     const isCouponClearCommand = normalized.includes('remove coupon') || normalized.includes('clear coupon') || normalized.includes('coupon hata') || normalized.includes('coupon clear');
+    const isCheckoutCommand = /\b(checkout|payment|pay)\b/i.test(normalized);
 
     const matchedProduct = resolveChatProduct(catalogProducts, rawMessage, isRemoveCommand);
     let actionSummary = null;
@@ -611,7 +609,17 @@ function Home() {
       return;
     }
 
-    if (isClearCommand) {
+    if (isCheckoutCommand) {
+      if (cart.length > 0) {
+        setChatOpen(false);
+        setCartOpen(true);
+        setShowCheckout(true);
+        appendChatAction(rawMessage, 'Taking you to checkout.');
+        return;
+      } else {
+        actionSummary = 'Your cart is empty. Please add items before checking out.';
+      }
+    } else if (isClearCommand) {
       clearFilters();
       actionSummary = getChatbotActionSummary({ type: 'clear-filters' });
     } else if (isAddCommand && matchedProduct) {
@@ -625,9 +633,15 @@ function Home() {
       setLastSuggestedProductIds([matchedProduct.id]);
       actionSummary = getChatbotActionSummary({ type: 'remove', product: matchedProduct, removedAll });
     } else if (isAddCommand && !matchedProduct) {
-      actionSummary = 'Can you specify the product name? For example: "Add classic white sneakers to cart".';
+      const attemptedName = splitCartKeywords(rawMessage).join(' ');
+      actionSummary = attemptedName 
+        ? `Sorry, I couldn't find a product named '${attemptedName}'. Please check the product name and try again.` 
+        : 'Can you specify the product name? For example: "Add classic white sneakers to cart".';
     } else if (isRemoveCommand && !matchedProduct) {
-      actionSummary = 'Which item do you want to remove? Please write the product name, for example: "Remove hoodie from cart".';
+      const attemptedName = splitCartKeywords(rawMessage).join(' ');
+      actionSummary = attemptedName
+        ? `Sorry, I couldn't find a product named '${attemptedName}'. Please check the product name and try again.`
+        : 'Which item do you want to remove? Please write the product name, for example: "Remove hoodie from cart".';
     } else if (isCouponClearCommand) {
       clearCoupon();
       actionSummary = getChatbotActionSummary({ type: 'coupon-cleared' });
@@ -961,11 +975,18 @@ function Home() {
                     <strong>Total</strong>
                     <strong>{formatPrice(cartTotal)}</strong>
                   </div>
-                  <button 
-                    className="add-to-cart-btn" 
-                    style={{marginTop: '1rem'}} 
+                  <button
+                    type="button"
+                    className="add-to-cart-btn"
+                    style={{ marginTop: '1rem', width: '100%' }}
                     disabled={cart.length === 0}
-                    onClick={() => setShowCheckout(true)}
+                    onClick={() => {
+                      if (!cart.length) {
+                        alert('Add items to cart first.');
+                        return;
+                      }
+                      setShowCheckout(true);
+                    }}
                   >
                     Proceed to Checkout
                   </button>
@@ -1032,12 +1053,13 @@ function Home() {
                     >
                       Back
                     </button>
-                    <button 
-                      type="submit" 
-                      className="add-to-cart-btn" 
-                      style={{flex: 2, margin: 0}}
+                    <button
+                      type="submit"
+                      className="add-to-cart-btn"
+                      style={{ flex: 2, margin: 0 }}
+                      disabled={isPlacingOrder}
                     >
-                      Place Order
+                      {isPlacingOrder ? 'Placing order...' : 'Place Order'}
                     </button>
                   </div>
                 </div>

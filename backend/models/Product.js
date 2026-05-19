@@ -9,9 +9,10 @@ const productSchema = new mongoose.Schema(
         image: { type: String, default: '/images/default.png' },
         category: { type: String, default: 'all' },
         description: { type: String, default: '' },
-        metaTitle: { type: String, default: '' },
-        metaDescription: { type: String, default: '' },
+        seo_title: { type: String, default: '' },
+        seo_description: { type: String, default: '' },
         keywords: { type: String, default: '' },
+        alt_text: { type: String, default: '' },
         slug: { type: String, default: '' },
     },
     { timestamps: true }
