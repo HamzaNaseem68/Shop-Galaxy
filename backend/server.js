@@ -28,10 +28,11 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps, curl, postman)
     if (!origin) return callback(null, true);
     
-    // Allow if origin matches configured frontend URL, local development, or any Vercel domain
+    // Allow if origin matches configured frontend URL, local development, Vercel or Netlify domains
     if (
       allowedOrigins.includes(origin) || 
-      /\.vercel\.app$/.test(origin)
+      /\.vercel\.app$/.test(origin) ||
+      /\.netlify\.app$/.test(origin)
     ) {
       callback(null, true);
     } else {
