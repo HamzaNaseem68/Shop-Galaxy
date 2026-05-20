@@ -144,47 +144,8 @@ app.post('/api/orders', async (req, res) => {
   }
 })
 
-// --- Admin Analytics & Orders ---
-app.get('/api/admin/users', async (req, res) => {
-  try {
-    const users = await User.find({}).select('-password').sort({ createdAt: -1 })
-    res.json(users)
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' })
-  }
-})
-
-app.get('/api/admin/orders', async (req, res) => {
-  try {
-    const orders = await Order.find({}).sort({ createdAt: -1 })
-    res.json(orders)
-  } catch (error) {
-    res.status(500).json({ error: 'Server error' })
-  }
-})
-
-app.put('/api/admin/orders/:id/status', async (req, res) => {
-  try {
-    const { status } = req.body || {};
-    const { id } = req.params;
-    
-    if (!status) return res.status(400).json({ error: 'Status is required' });
-
-    const order = await Order.findOneAndUpdate(
-      { orderId: id }, 
-      { 
-        $set: { status },
-        $push: { history: { label: status, at: new Date().toISOString() } }
-      },
-      { new: true }
-    );
-    
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    res.json(order);
-  } catch(error) {
-    res.status(500).json({ error: 'Server error updating status' });
-  }
-})
+// --- Admin Routes (Modular) ---
+app.use('/api/admin', require('./admin/adminRouter'))
 
 app.get('/api/orders/:id', async (req, res) => {
   try {
