@@ -86,7 +86,7 @@ const dummyProducts = [
     name: 'Bleu de Chanel 100ml',
     price: 'Rs 22,000',
     badge: 'Luxury',
-    image: 'https://images.unsplash.com/photo-1523293182086-7651a899d37f?auto=format&fit=crop&w=800&q=80',
+    image: 'https://images.unsplash.com/photo-1523293182086-7651a899d37f?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
     category: 'perfumes',
     description: 'A woody aromatic fragrance for the man who defies convention.',
     metaTitle: 'Bleu de Chanel Perfume',
